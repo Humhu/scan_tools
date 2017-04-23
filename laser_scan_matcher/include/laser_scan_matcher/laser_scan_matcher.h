@@ -59,6 +59,8 @@
 #undef min
 #undef max
 
+#include <paraset/ParameterManager.hpp>
+
 namespace scan_tools
 {
 
@@ -100,9 +102,9 @@ class LaserScanMatcher
 
     std::string base_frame_;
     std::string fixed_frame_;
-    double cloud_range_min_;
-    double cloud_range_max_;
-    double cloud_res_;
+    argus::NumericParam cloud_range_min_;
+    argus::NumericParam cloud_range_max_;
+    argus::NumericParam cloud_res_;
     bool publish_tf_;
     bool publish_pose_;
     bool publish_pose_with_covariance_;
@@ -113,9 +115,8 @@ class LaserScanMatcher
 
     bool use_cloud_input_;
 
-    double kf_dist_linear_;
-    double kf_dist_linear_sq_;
-    double kf_dist_angular_;
+    argus::NumericParam kf_dist_linear_;
+    argus::NumericParam kf_dist_angular_;
 
     // **** What predictions are available to speed up the ICP?
     // 1) imu - [theta] from imu yaw angle - /imu topic
@@ -152,6 +153,34 @@ class LaserScanMatcher
     std::vector<double> a_cos_;
     std::vector<double> a_sin_;
 
+    // CSM Parameters
+    argus::NumericParam max_angular_correction_;
+    argus::NumericParam max_linear_correction_;
+    argus::NumericParam max_iterations_;
+    argus::NumericParam log_epsilon_xy_;
+    argus::NumericParam log_epsilon_theta_;
+    argus::NumericParam max_correspond_dist_;
+    argus::NumericParam log_sigma_;
+    argus::BooleanParam use_corr_tricks_;
+    argus::BooleanParam restart_;
+    argus::NumericParam log_restart_thresh_err_;
+    argus::NumericParam restart_dt_;
+    argus::NumericParam restart_dtheta_;
+    argus::NumericParam clustering_thresh_;
+    argus::NumericParam orientation_neighbourhood_;
+    argus::BooleanParam use_point_to_line_dist_;
+    argus::BooleanParam do_alpha_test_;
+    argus::NumericParam alpha_test_thresh_;
+    argus::NumericParam outliers_maxPerc_;
+    argus::NumericParam outliers_adaptive_order_;
+    argus::NumericParam outliers_adaptive_mult_;
+    argus::BooleanParam do_visibility_test_;
+    argus::BooleanParam do_remove_doubles_;
+    bool do_compute_covariance_;
+    bool debug_verify_tricks_;
+    argus::BooleanParam use_ml_weights_;
+    argus::BooleanParam use_sigma_weights_;
+
     sm_params input_;
     sm_result output_;
     LDP prev_ldp_scan_;
@@ -159,6 +188,7 @@ class LaserScanMatcher
     // **** methods
 
     void initParams();
+    void updateScanMatchParams(sm_params& params);
     void processScan(LDP& curr_ldp_scan, const ros::Time& time);
 
     void laserScanToLDP(const sensor_msgs::LaserScan::ConstPtr& scan_msg,

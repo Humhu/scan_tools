@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(laser_scan_matcher)
 
+set( CMAKE_CXX_FLAGS "-g -Wall -std=c++11" )
+
 # List C++ dependencies on ros packages
 set( ROS_CXX_DEPENDENCIES
   roscpp
@@ -10,7 +12,8 @@ set( ROS_CXX_DEPENDENCIES
   pcl_ros
   pcl_conversions
   geometry_msgs
-  nav_msgs)
+  nav_msgs
+  paraset)
 
 # Find catkin and all required ROS components
 find_package(catkin REQUIRED COMPONENTS ${ROS_CXX_DEPENDENCIES} rostest)

@@ -64,7 +64,7 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   input_.laser[1] = 0.0;
   input_.laser[2] = 0.0;
 
-  // Initialize output_ vectors as Null for error-checking
+  // InitializeAndRead output_ vectors as Null for error-checking
   output_.cov_x_m = 0;
   output_.dx_dy1_m = 0;
   output_.dx_dy2_m = 0;
@@ -150,26 +150,31 @@ void LaserScanMatcher::initParams()
 
   if (use_cloud_input_)
   {
-    if (!nh_private_.getParam ("cloud_range_min", cloud_range_min_))
-      cloud_range_min_ = 0.1;
-    if (!nh_private_.getParam ("cloud_range_max", cloud_range_max_))
-      cloud_range_max_ = 50.0;
-    if (!nh_private_.getParam ("cloud_res", cloud_res_))
-      cloud_res_ = 0.05;
-
-    input_.min_reading = cloud_range_min_;
-    input_.max_reading = cloud_range_max_;
+    cloud_range_min_.InitializeAndRead(nh_private_,
+                                0.1,
+                                "cloud_range_min",
+                                "Minimum point distance");
+    cloud_range_max_.InitializeAndRead(nh_private_,
+                                50.0,
+                                "cloud_range_max",
+                                "Maximum point distance");
+    cloud_res_.InitializeAndRead(nh_private_,
+                          0.05,
+                          "cloud_res",
+                          "Cloud resolution");
   }
 
   // **** keyframe params: when to generate the keyframe scan
   // if either is set to 0, reduces to frame-to-frame matching
 
-  if (!nh_private_.getParam ("kf_dist_linear", kf_dist_linear_))
-    kf_dist_linear_ = 0.10;
-  if (!nh_private_.getParam ("kf_dist_angular", kf_dist_angular_))
-    kf_dist_angular_ = 10.0 * (M_PI / 180.0);
-
-  kf_dist_linear_sq_ = kf_dist_linear_ * kf_dist_linear_;
+  kf_dist_linear_.InitializeAndRead(nh_private_,
+                             0.1,
+                             "kf_dist_linear",
+                             "Keyframe linear threshold");
+  kf_dist_angular_.InitializeAndRead(nh_private_,
+                              10.0 * (M_PI / 180.0),
+                              "kf_dist_angular",
+                              "Keyframe angular threshold");
 
   // **** What predictions are available to speed up the ICP?
   // 1) imu - [theta] from imu yaw angle - /imu topic
@@ -216,80 +221,127 @@ void LaserScanMatcher::initParams()
     orientation_covariance_.resize(3);
     std::fill(orientation_covariance_.begin(), orientation_covariance_.end(), 1e-9);
   }
-  // **** CSM parameters - comments copied from algos.h (by Andrea Censi)
 
+  // **** CSM parameters - comments copied from algos.h (by Andrea Censi)
   // Maximum angular displacement between scans
-  if (!nh_private_.getParam ("max_angular_correction_deg", input_.max_angular_correction_deg))
-    input_.max_angular_correction_deg = 45.0;
+  max_angular_correction_.InitializeAndRead(nh_private_,
+                               45.0,
+                               "max_angular_correction",
+                               "Maximum angular displacement between scans (deg)");
+  max_angular_correction_.AddCheck<argus::GreaterThan>(0.0);
 
   // Maximum translation between scans (m)
-  if (!nh_private_.getParam ("max_linear_correction", input_.max_linear_correction))
-    input_.max_linear_correction = 0.50;
+  max_linear_correction_.InitializeAndRead(nh_private_,
+                              0.50,
+                              "max_linear_correction",
+                              "Maximum translation between scans (m)");
+  max_linear_correction_.AddCheck<argus::GreaterThan>(0.0);
 
   // Maximum ICP cycle iterations
-  if (!nh_private_.getParam ("max_iterations", input_.max_iterations))
-    input_.max_iterations = 10;
+  max_iterations_.InitializeAndRead(nh_private_,
+                             10,
+                             "max_iterations",
+                             "Maximum ICP cycle iterations");
+  max_iterations_.AddCheck<argus::IntegerValued>();
 
   // A threshold for stopping (m)
-  if (!nh_private_.getParam ("epsilon_xy", input_.epsilon_xy))
-    input_.epsilon_xy = 0.000001;
+  log_epsilon_xy_.InitializeAndRead(nh_private_,
+                             -6,
+                             "log_epsilon_xy",
+                             "Log threshold for stopping (m)");
 
   // A threshold for stopping (rad)
-  if (!nh_private_.getParam ("epsilon_theta", input_.epsilon_theta))
-    input_.epsilon_theta = 0.000001;
+  log_epsilon_theta_.InitializeAndRead(nh_private_,
+                                -6,
+                                "log_epsilon_theta",
+                                "Log threshold for stopping (rad)");
 
   // Maximum distance for a correspondence to be valid
-  if (!nh_private_.getParam ("max_correspondence_dist", input_.max_correspondence_dist))
-    input_.max_correspondence_dist = 0.3;
+  max_correspond_dist_.InitializeAndRead(nh_private_,
+                                  0.3,
+                                  "max_correspond_dist",
+                                  "Maximum distance for a correspondence to be valid");
+  max_correspond_dist_.AddCheck<argus::GreaterThan>(0.0);
 
   // Noise in the scan (m)
-  if (!nh_private_.getParam ("sigma", input_.sigma))
-    input_.sigma = 0.010;
+  log_sigma_.InitializeAndRead(nh_private_,
+                    -1,
+                    "log_sigma",
+                    "Log noise in the scan (m)");
 
   // Use smart tricks for finding correspondences.
-  if (!nh_private_.getParam ("use_corr_tricks", input_.use_corr_tricks))
-    input_.use_corr_tricks = 1;
+  use_corr_tricks_.InitializeAndRead(nh_private_,
+                              true,
+                              "use_correspond_tricks",
+                              "Use smart tricks for finding correspondences");
 
   // Restart: Restart if error is over threshold
-  if (!nh_private_.getParam ("restart", input_.restart))
-    input_.restart = 0;
+  restart_.InitializeAndRead(nh_private_,
+                      false,
+                      "restart_if_err_over",
+                      "Restart if error is over threshold");
 
   // Restart: Threshold for restarting
-  if (!nh_private_.getParam ("restart_threshold_mean_error", input_.restart_threshold_mean_error))
-    input_.restart_threshold_mean_error = 0.01;
+  log_restart_thresh_err_.InitializeAndRead(nh_private_,
+                                     -2,
+                                     "log_restart_thresh_err",
+                                     "Log mean error threshold for restarting");
 
   // Restart: displacement for restarting. (m)
-  if (!nh_private_.getParam ("restart_dt", input_.restart_dt))
-    input_.restart_dt = 1.0;
+  restart_dt_.InitializeAndRead(nh_private_,
+                         1.0,
+                         "restart_dt",
+                         "Displacement for restarting (m)");
+  restart_dt_.AddCheck<argus::GreaterThan>(0);
 
   // Restart: displacement for restarting. (rad)
-  if (!nh_private_.getParam ("restart_dtheta", input_.restart_dtheta))
-    input_.restart_dtheta = 0.1;
+  restart_dtheta_.InitializeAndRead(nh_private_,
+                             0.1,
+                             "restart_dtheta",
+                             "Displacement for restarting (rad)");
+  restart_dtheta_.AddCheck<argus::GreaterThan>(0);
 
   // Max distance for staying in the same clustering
-  if (!nh_private_.getParam ("clustering_threshold", input_.clustering_threshold))
-    input_.clustering_threshold = 0.25;
+  clustering_thresh_.InitializeAndRead(nh_private_,
+                                   0.25,
+                                   "clustering_threshold",
+                                   "Max distance for staying in the same clustering");
+  clustering_thresh_.AddCheck<argus::GreaterThan>(0);
 
   // Number of neighbour rays used to estimate the orientation
-  if (!nh_private_.getParam ("orientation_neighbourhood", input_.orientation_neighbourhood))
-    input_.orientation_neighbourhood = 20;
+  orientation_neighbourhood_.InitializeAndRead(nh_private_,
+                                        20,
+                                        "orientation_neighbourhood",
+                                        "Number of neighbour rays used to estimate the orientation");
+  orientation_neighbourhood_.AddCheck<argus::IntegerValued>();
 
   // If 0, it's vanilla ICP
-  if (!nh_private_.getParam ("use_point_to_line_distance", input_.use_point_to_line_distance))
-    input_.use_point_to_line_distance = 1;
+  use_point_to_line_dist_.InitializeAndRead(nh_private_,
+                                     true,
+                                     "use_point_to_line_distance",
+                                     "Whether to use line-based ICP or vanilla ICP");
 
   // Discard correspondences based on the angles
-  if (!nh_private_.getParam ("do_alpha_test", input_.do_alpha_test))
-    input_.do_alpha_test = 0;
+  do_alpha_test_.InitializeAndRead(nh_private_,
+                            false,
+                            "do_alpha_test",
+                            "Discard correspondences based on the angles");
 
   // Discard correspondences based on the angles - threshold angle, in degrees
-  if (!nh_private_.getParam ("do_alpha_test_thresholdDeg", input_.do_alpha_test_thresholdDeg))
-    input_.do_alpha_test_thresholdDeg = 20.0;
+  alpha_test_thresh_.InitializeAndRead(nh_private_,
+                                20.0,
+                                "alpha_test_thresh",
+                                "Correspondence angle threshold (deg)");
+  alpha_test_thresh_.AddCheck<argus::GreaterThan>(0);
 
   // Percentage of correspondences to consider: if 0.9,
   // always discard the top 10% of correspondences with more error
-  if (!nh_private_.getParam ("outliers_maxPerc", input_.outliers_maxPerc))
-    input_.outliers_maxPerc = 0.90;
+  outliers_maxPerc_.InitializeAndRead(nh_private_,
+                              0.90,
+                              "outliers_max_ratio",
+                              "Ratio of correspondences to consider (outlier ratio inverse)");
+  outliers_maxPerc_.AddCheck<argus::GreaterThanOrEqual>(0);
+  outliers_maxPerc_.AddCheck<argus::LessThanOrEqual>(1);  
 
   // Parameters describing a simple adaptive algorithm for discarding.
   //  1) Order the errors.
@@ -299,40 +351,87 @@ void LaserScanMatcher::initParams()
   //     with the value of the error at the chosen percentile.
   //  4) Discard correspondences over the threshold.
   //  This is useful to be conservative; yet remove the biggest errors.
-  if (!nh_private_.getParam ("outliers_adaptive_order", input_.outliers_adaptive_order))
-    input_.outliers_adaptive_order = 0.7;
+  outliers_adaptive_order_.InitializeAndRead(nh_private_,
+                                      0.7,
+                                      "outliers_adaptive_order",
+                                      "Ratio (percentile) for base adaptive error threshold");
+  outliers_adaptive_order_.AddCheck<argus::GreaterThanOrEqual>(0);
+  outliers_adaptive_order_.AddCheck<argus::LessThanOrEqual>(1);
 
-  if (!nh_private_.getParam ("outliers_adaptive_mult", input_.outliers_adaptive_mult))
-    input_.outliers_adaptive_mult = 2.0;
+  outliers_adaptive_mult_.InitializeAndRead(nh_private_,
+                                     2.0,
+                                     "outliers_adaptive_mult",
+                                     "Multiplier on base adaptive error threshold");
+  outliers_adaptive_mult_.AddCheck<argus::GreaterThan>(0);
 
   // If you already have a guess of the solution, you can compute the polar angle
   // of the points of one scan in the new position. If the polar angle is not a monotone
   // function of the readings index, it means that the surface is not visible in the
   // next position. If it is not visible, then we don't use it for matching.
-  if (!nh_private_.getParam ("do_visibility_test", input_.do_visibility_test))
-    input_.do_visibility_test = 0;
+  do_visibility_test_.InitializeAndRead(nh_private_,
+                                 false,
+                                 "do_visibiliyt_test",
+                                 "Whether to enable the angle-based surface visibility test");
 
   // no two points in laser_sens can have the same corr.
-  if (!nh_private_.getParam ("outliers_remove_doubles", input_.outliers_remove_doubles))
-    input_.outliers_remove_doubles = 1;
+  do_remove_doubles_.InitializeAndRead(nh_private_,
+                                true,
+                                "do_remove_doubles",
+                                "Whether to remove points with the same correspondence");
 
   // If 1, computes the covariance of ICP using the method http://purl.org/censi/2006/icpcov
-  if (!nh_private_.getParam ("do_compute_covariance", input_.do_compute_covariance))
-    input_.do_compute_covariance = 0;
+  argus::GetParam(nh_private_, "do_compute_covariance", do_compute_covariance_, false);
 
   // Checks that find_correspondences_tricks gives the right answer
-  if (!nh_private_.getParam ("debug_verify_tricks", input_.debug_verify_tricks))
-    input_.debug_verify_tricks = 0;
+  argus::GetParam(nh_private_, "debug_verify_tricks", debug_verify_tricks_, false);
 
   // If 1, the field 'true_alpha' (or 'alpha') in the first scan is used to compute the
   // incidence beta, and the factor (1/cos^2(beta)) used to weight the correspondence.");
-  if (!nh_private_.getParam ("use_ml_weights", input_.use_ml_weights))
-    input_.use_ml_weights = 0;
+  use_ml_weights_.InitializeAndRead(nh_private_,
+                             false,
+                             "use_ml_weights",
+                             "Whether to use the first scan incidence beta to weight the correspondences");
 
   // If 1, the field 'readings_sigma' in the second scan is used to weight the
   // correspondence by 1/sigma^2
-  if (!nh_private_.getParam ("use_sigma_weights", input_.use_sigma_weights))
-    input_.use_sigma_weights = 0;
+  use_sigma_weights_.InitializeAndRead(nh_private_,
+                                false,
+                                "use_sigma_weights",
+                                "Whether to use the second scan sigma to weight the correspondence");
+}
+
+void LaserScanMatcher::updateScanMatchParams(sm_params& params)
+{
+  params.max_angular_correction_deg = max_angular_correction_;
+  params.max_linear_correction = max_linear_correction_;
+  params.epsilon_xy = std::exp(log_epsilon_xy_);
+  params.epsilon_theta = std::exp(log_epsilon_theta_);
+  params.max_correspondence_dist = max_correspond_dist_;
+  params.use_corr_tricks = use_corr_tricks_;
+  params.restart = restart_;
+  params.restart_threshold_mean_error = std::exp(log_restart_thresh_err_);
+  params.restart_dt = restart_dt_;
+  params.restart_dtheta = restart_dtheta_;
+  params.outliers_maxPerc = outliers_maxPerc_;
+  params.outliers_adaptive_order = outliers_adaptive_order_;
+  params.outliers_adaptive_mult = outliers_adaptive_mult_;
+  params.outliers_remove_doubles = do_remove_doubles_;
+  params.clustering_threshold = clustering_thresh_;
+  params.orientation_neighbourhood = orientation_neighbourhood_;
+  params.do_alpha_test = do_alpha_test_;
+  params.do_alpha_test_thresholdDeg = alpha_test_thresh_;
+  params.do_visibility_test = do_visibility_test_;
+  params.use_point_to_line_distance = use_point_to_line_dist_;
+  params.use_ml_weights = use_ml_weights_;
+  params.use_sigma_weights = use_sigma_weights_;
+  params.do_compute_covariance = do_compute_covariance_;
+  params.debug_verify_tricks = debug_verify_tricks_;
+  params.sigma = std::exp(log_sigma_);
+  if(use_cloud_input_)
+  {
+    params.min_reading = cloud_range_min_;
+    params.max_reading = cloud_range_max_;
+  }
 }
 
 void LaserScanMatcher::imuCallback(const sensor_msgs::Imu::ConstPtr& imu_msg)
@@ -491,7 +590,7 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
   }
 
   // *** scan match - using point to line icp from CSM
-
+  updateScanMatchParams(input_);
   sm_icp(&input_, &output_);
   tf::Transform corr_ch;
 
@@ -638,7 +737,7 @@ bool LaserScanMatcher::newKeyframeNeeded(const tf::Transform& d)
 
   double x = d.getOrigin().getX();
   double y = d.getOrigin().getY();
-  if (x*x + y*y > kf_dist_linear_sq_) return true;
+  if (x*x + y*y > kf_dist_linear_ * kf_dist_linear_) return true;
 
   return false;
 }
