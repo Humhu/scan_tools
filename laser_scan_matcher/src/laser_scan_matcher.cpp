@@ -265,7 +265,7 @@ void LaserScanMatcher::initParams()
 
   // Noise in the scan (m)
   log_sigma_.InitializeAndRead(nh_private_,
-                    -1,
+                    -2,
                     "log_sigma",
                     "Log noise in the scan (m)");
 
@@ -370,7 +370,7 @@ void LaserScanMatcher::initParams()
   // next position. If it is not visible, then we don't use it for matching.
   do_visibility_test_.InitializeAndRead(nh_private_,
                                  false,
-                                 "do_visibiliyt_test",
+                                 "do_visibility_test",
                                  "Whether to enable the angle-based surface visibility test");
 
   // no two points in laser_sens can have the same corr.
@@ -404,12 +404,13 @@ void LaserScanMatcher::updateScanMatchParams(sm_params& params)
 {
   params.max_angular_correction_deg = max_angular_correction_;
   params.max_linear_correction = max_linear_correction_;
-  params.epsilon_xy = std::exp(log_epsilon_xy_);
-  params.epsilon_theta = std::exp(log_epsilon_theta_);
+  params.epsilon_xy = std::pow(10, log_epsilon_xy_);
+  params.epsilon_theta = std::pow(10, log_epsilon_theta_);
+  params.max_iterations = max_iterations_;
   params.max_correspondence_dist = max_correspond_dist_;
   params.use_corr_tricks = use_corr_tricks_;
   params.restart = restart_;
-  params.restart_threshold_mean_error = std::exp(log_restart_thresh_err_);
+  params.restart_threshold_mean_error = std::pow(10, log_restart_thresh_err_);
   params.restart_dt = restart_dt_;
   params.restart_dtheta = restart_dtheta_;
   params.outliers_maxPerc = outliers_maxPerc_;
@@ -426,7 +427,7 @@ void LaserScanMatcher::updateScanMatchParams(sm_params& params)
   params.use_sigma_weights = use_sigma_weights_;
   params.do_compute_covariance = do_compute_covariance_;
   params.debug_verify_tricks = debug_verify_tricks_;
-  params.sigma = std::exp(log_sigma_);
+  params.sigma = std::pow(10, log_sigma_);
   if(use_cloud_input_)
   {
     params.min_reading = cloud_range_min_;
@@ -592,7 +593,8 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
   // *** scan match - using point to line icp from CSM
   updateScanMatchParams(input_);
   sm_icp(&input_, &output_);
-  tf::Transform corr_ch;
+  
+tf::Transform corr_ch;
 
   if (output_.valid)
   {
@@ -737,7 +739,7 @@ bool LaserScanMatcher::newKeyframeNeeded(const tf::Transform& d)
 
   double x = d.getOrigin().getX();
   double y = d.getOrigin().getY();
-  if (x*x + y*y > kf_dist_linear_ * kf_dist_linear_) return true;
+  if ((x*x + y*y) > (kf_dist_linear_ * kf_dist_linear_)) return true;
 
   return false;
 }
