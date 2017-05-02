@@ -712,8 +712,9 @@ tf::Transform corr_ch;
   }
 
   // **** swap old and new
-
-  if (newKeyframeNeeded(corr_ch))
+  // NOTE Added this check for invalid output to make overall tracking
+  // more robust at the cost of more drift
+  if (!output_.valid || newKeyframeNeeded(corr_ch))
   {
     // generate a keyframe
     ld_free(prev_ldp_scan_);
