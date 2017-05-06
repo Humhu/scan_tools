@@ -554,30 +554,50 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
   // **** estimated change since last scan
 
   double dt = (time - last_icp_time_).toSec();
+
+  if( dt < 0 )
+  {
+		ROS_INFO_STREAM( "Negative dt detected. Resetting state...");
+
+		// TODO Reset IMU msg or odom as well
+		if( use_vel_ )
+		{
+			argus::PoseSE3::TangentVector tang;
+			tang.setZero();
+			latest_vel_msg_ = argus::TangentToMsg( tang );
+		}
+
+		if( prev_ldp_scan_ )
+		{
+    		ld_free(prev_ldp_scan_);
+		}
+		initialized_ = false;
+		b2f_ = argus::PoseSE3();
+		b2f_kf_ = argus::PoseSE3();
+		return;
+  }
+
   double pr_ch_x, pr_ch_y, pr_ch_a;
   getPrediction(pr_ch_x, pr_ch_y, pr_ch_a, dt);
 
-  // the predicted change of the laser's position, in the fixed frame
+  // NOTE This used to be in the fixed frame? Why...
+  // the predicted change of the laser's position, in the body frame
 
   argus::PoseSE2 pr_ch2(pr_ch_x, pr_ch_y, pr_ch_a);
   argus::PoseSE3 pr_ch = argus::PoseSE3::FromSE2(pr_ch2);
-//   tf::Transform pr_ch;
-//   createTfFromXYTheta(pr_ch_x, pr_ch_y, pr_ch_a, pr_ch);
 
   // account for the change since the last kf, in the fixed frame
-
-  pr_ch = pr_ch * (f2b_ * f2b_kf_.Inverse());
+  pr_ch = b2f_kf_.Inverse() * b2f_ * pr_ch;
 
   // the predicted change of the laser's position, in the laser frame
 
-  //tf::Transform pr_ch_l;
   argus::PoseSE3 pr_ch_l;
-  pr_ch_l = laser_to_base_ * f2b_.Inverse() * pr_ch * f2b_ * base_to_laser_ ;
+  pr_ch_l = base_to_laser_ * pr_ch * laser_to_base_;
 
   argus::PoseSE2 pr_ch_l2 = argus::PoseSE2::FromSE3(pr_ch_l);
-  input_.first_guess[0] = pr_ch_l2.GetTranslation().x(); //getOrigin().getX();
-  input_.first_guess[1] = pr_ch_l2.GetTranslation().y();//getOrigin().getY();
-  input_.first_guess[2] = pr_ch_l2.GetRotation().angle(); //tf::getYaw(pr_ch_l.getRotation());
+  input_.first_guess[0] = pr_ch_l2.GetTranslation().x();
+  input_.first_guess[1] = pr_ch_l2.GetTranslation().y();
+  input_.first_guess[2] = pr_ch_l2.GetRotation().angle();
 
   // If they are non-Null, free covariance gsl matrices to avoid leaking memory
   if (output_.cov_x_m)
@@ -613,23 +633,24 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
 	argus::PoseSE3 corr_ch_l = argus::PoseSE3::FromSE2(corr_ch_l2);
 
     // the correction of the base's position, in the base frame
-    corr_ch = base_to_laser_ * corr_ch_l * laser_to_base_;
+    //corr_ch = base_to_laser_ * corr_ch_l * laser_to_base_;
+	corr_ch = laser_to_base_ * corr_ch_l * base_to_laser_;
 
     // update the pose in the world frame
-    f2b_ = f2b_kf_ * corr_ch;
+    b2f_ = b2f_kf_ * corr_ch;
 
     // **** publish
 
-	argus::PoseSE2 f2b_2 = argus::PoseSE2::FromSE3(f2b_);
+	argus::PoseSE2 b2f_2 = argus::PoseSE2::FromSE3(b2f_);
 
     if (publish_pose_)
     {
       // unstamped Pose2D message
       geometry_msgs::Pose2D::Ptr pose_msg;
       pose_msg = boost::make_shared<geometry_msgs::Pose2D>();
-      pose_msg->x = f2b_2.GetTranslation().x(); //f2b_.getOrigin().getX();
-      pose_msg->y = f2b_2.GetTranslation().y(); //f2b_.getOrigin().getY();
-      pose_msg->theta = f2b_2.GetRotation().angle(); //tf::getYaw(f2b_.getRotation());
+      pose_msg->x = b2f_2.GetTranslation().x(); //b2f_.getOrigin().getX();
+      pose_msg->y = b2f_2.GetTranslation().y(); //b2f_.getOrigin().getY();
+      pose_msg->theta = b2f_2.GetRotation().angle(); //tf::getYaw(b2f_.getRotation());
       pose_publisher_.publish(pose_msg);
     }
     if (publish_pose_stamped_)
@@ -640,8 +661,8 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
 
       pose_stamped_msg->header.stamp    = time;
       pose_stamped_msg->header.frame_id = fixed_frame_;
-	  pose_stamped_msg->pose = PoseToMsg(f2b_);
-    //   tf::poseTFToMsg(f2b_, pose_stamped_msg->pose);
+	  pose_stamped_msg->pose = PoseToMsg(b2f_);
+    //   tf::poseTFToMsg(b2f_, pose_stamped_msg->pose);
 
       pose_stamped_publisher_.publish(pose_stamped_msg);
     }
@@ -650,8 +671,8 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
       // unstamped PoseWithCovariance message
       geometry_msgs::PoseWithCovariance::Ptr pose_with_covariance_msg;
       pose_with_covariance_msg = boost::make_shared<geometry_msgs::PoseWithCovariance>();
-	  pose_with_covariance_msg->pose = PoseToMsg(f2b_);
-	//   tf::poseTFToMsg(f2b_, pose_with_covariance_msg->pose);
+	  pose_with_covariance_msg->pose = PoseToMsg(b2f_);
+	//   tf::poseTFToMsg(b2f_, pose_with_covariance_msg->pose);
 
       if (input_.do_compute_covariance)
       {
@@ -684,8 +705,8 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
 
       pose_with_covariance_stamped_msg->header.stamp    = time;
       pose_with_covariance_stamped_msg->header.frame_id = fixed_frame_;
-	  pose_with_covariance_stamped_msg->pose.pose = argus::PoseToMsg(f2b_);
-    //   tf::poseTFToMsg(f2b_, pose_with_covariance_stamped_msg->pose.pose);
+	  pose_with_covariance_stamped_msg->pose.pose = argus::PoseToMsg(b2f_);
+    //   tf::poseTFToMsg(b2f_, pose_with_covariance_stamped_msg->pose.pose);
 
       if (input_.do_compute_covariance)
       {
@@ -713,13 +734,13 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
 
     if (publish_tf_)
     {
-		extrinsics_.SetExtrinsics(base_frame_, fixed_frame_, time, f2b_);
+		extrinsics_.SetExtrinsics(base_frame_, fixed_frame_, time, b2f_);
 	//   geometry_msgs::TransformStamped transform_msg;
 	//   msg.header.stamp = time;
 	//   msg.header.frame_id = fixed_frame_;
 	//   msg.child_frame_id = base_frame_;
 
-    //   tf::StampedTransform transform_msg (f2b_, time, fixed_frame_, base_frame_);
+    //   tf::StampedTransform transform_msg (b2f_, time, fixed_frame_, base_frame_);
     //   tf_broadcaster_.sendTransform(transform_msg);
     }
   }
@@ -738,7 +759,7 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
     // generate a keyframe
     ld_free(prev_ldp_scan_);
     prev_ldp_scan_ = curr_ldp_scan;
-    f2b_kf_ = f2b_;
+    b2f_kf_ = b2f_;
   }
   else
   {

@@ -139,8 +139,8 @@ class LaserScanMatcher
     bool received_odom_;
     bool received_vel_;
 
-    argus::PoseSE3 f2b_;    // fixed-to-base tf (pose of base frame in fixed frame)
-    argus::PoseSE3 f2b_kf_; // pose of the last keyframe scan in fixed frame
+    argus::PoseSE3 b2f_;    // base-to-fixed tf (pose of base frame in fixed frame)
+    argus::PoseSE3 b2f_kf_; // pose of the last keyframe scan in fixed frame
 
     ros::Time last_icp_time_;
 
