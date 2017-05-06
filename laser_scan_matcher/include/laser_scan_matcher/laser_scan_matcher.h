@@ -47,9 +47,10 @@
 #include <geometry_msgs/PoseWithCovariance.h>
 #include <geometry_msgs/TwistStamped.h>
 #include <nav_msgs/Odometry.h>
-#include <tf/transform_datatypes.h>
-#include <tf/transform_listener.h>
-#include <tf/transform_broadcaster.h>
+
+#include <tf2_ros/transform_listener.h>
+#include <tf2_ros/transform_broadcaster.h>
+
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
 #include <pcl/filters/voxel_grid.h>
@@ -60,6 +61,7 @@
 #undef max
 
 #include <paraset/ParameterManager.hpp>
+#include <extrinsics_array/ExtrinsicsInterface.h>
 
 namespace scan_tools
 {
@@ -87,11 +89,10 @@ class LaserScanMatcher
     ros::Subscriber imu_subscriber_;
     ros::Subscriber vel_subscriber_;
 
-    tf::TransformListener    tf_listener_;
-    tf::TransformBroadcaster tf_broadcaster_;
+	argus::ExtrinsicsInterface extrinsics_;
 
-    tf::Transform base_to_laser_; // static, cached
-    tf::Transform laser_to_base_; // static, cached, calculated from base_to_laser_
+    argus::PoseSE3 base_to_laser_; // static, cached
+    argus::PoseSE3 laser_to_base_; // static, cached, calculated from base_to_laser_
 
     ros::Publisher  pose_publisher_;
     ros::Publisher  pose_stamped_publisher_;
@@ -138,8 +139,8 @@ class LaserScanMatcher
     bool received_odom_;
     bool received_vel_;
 
-    tf::Transform f2b_;    // fixed-to-base tf (pose of base frame in fixed frame)
-    tf::Transform f2b_kf_; // pose of the last keyframe scan in fixed frame
+    argus::PoseSE3 f2b_;    // fixed-to-base tf (pose of base frame in fixed frame)
+    argus::PoseSE3 f2b_kf_; // pose of the last keyframe scan in fixed frame
 
     ros::Time last_icp_time_;
 
@@ -207,12 +208,12 @@ class LaserScanMatcher
     void createCache (const sensor_msgs::LaserScan::ConstPtr& scan_msg);
     bool getBaseToLaserTf (const std::string& frame_id);
 
-    bool newKeyframeNeeded(const tf::Transform& d);
+    bool newKeyframeNeeded(const argus::PoseSE3& d);
 
     void getPrediction(double& pr_ch_x, double& pr_ch_y,
                        double& pr_ch_a, double dt);
 
-    void createTfFromXYTheta(double x, double y, double theta, tf::Transform& t);
+    // void createTfFromXYTheta(double x, double y, double theta, tf::Transform& t);
 };
 
 } // namespace scan_tools

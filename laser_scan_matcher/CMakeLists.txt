@@ -8,12 +8,13 @@ set( ROS_CXX_DEPENDENCIES
   roscpp
   nodelet
   sensor_msgs
-  tf
   pcl_ros
   pcl_conversions
   geometry_msgs
   nav_msgs
-  paraset)
+  paraset
+  extrinsics_array
+  argus_utils)
 
 # Find catkin and all required ROS components
 find_package(catkin REQUIRED COMPONENTS ${ROS_CXX_DEPENDENCIES} rostest)
