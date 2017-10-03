@@ -182,6 +182,9 @@ class LaserScanMatcher
     argus::BooleanParam use_ml_weights_;
     argus::BooleanParam use_sigma_weights_;
 
+	argus::NumericParam min_inlier_ratio_;
+	argus::NumericParam max_corresp_err_;
+
     sm_params input_;
     sm_result output_;
     LDP prev_ldp_scan_;

@@ -400,6 +400,15 @@ void LaserScanMatcher::initParams()
                                 false,
                                 "use_sigma_weights",
                                 "Whether to use the second scan sigma to weight the correspondence");
+
+  min_inlier_ratio_.InitializeAndRead(nh_private_,
+                                      0.75,
+									  "min_inlier_ratio",
+									  "Minimum ratio of scan points that must be inliers");
+  max_corresp_err_.InitializeAndRead(nh_private_,
+                                     2.0,
+									 "max_correspondence_error",
+									 "Maximum solution correspondence error");
 }
 
 void LaserScanMatcher::updateScanMatchParams(sm_params& params)
@@ -623,9 +632,23 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
 //tf::Transform corr_ch;
   argus::PoseSE3 corr_ch;
 
+  double inlierRatio = output_.nvalid / (float) input_.laser_ref->nrays;
+  if( inlierRatio < min_inlier_ratio_ )
+  {
+	  ROS_WARN_STREAM( output_.nvalid << " inliers out of " << input_.laser_ref->nrays <<
+	                   " inputs with ratio " << inlierRatio << " less than min " <<
+	                   min_inlier_ratio_ );
+	  output_.valid = false;
+  }
+  if( output_.error > max_corresp_err_ )
+  {
+	  ROS_WARN_STREAM( "Solution error " << output_.error << " greater than max " << 
+	                   max_corresp_err_ );
+	  output_.valid = true;
+  }
+
   if (output_.valid)
   {
-
     // the correction of the laser's position, in the laser frame
     //tf::Transform corr_ch_l;
     // createTfFromXYTheta(output_.x[0], output_.x[1], output_.x[2], corr_ch_l);
